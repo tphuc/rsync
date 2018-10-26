@@ -2,8 +2,10 @@
 import os.path
 import argparse
 import difflib
+from os import stat
 from os import link
 from os import symlink
+from os import chmod
 
 """ 
 os.utime : modification time  (st_atime, st_mtime)
@@ -33,12 +35,10 @@ args = vars(args) # Convert Namespace to Dict
 class File:
     def __init__ (self, name):
         self.name = name
-        #f = open(self.name, 'a+')
+
     def get_realpath(self):
         """return the source file if the current file is a symlink"""
         return os.path.realpath(self.name)
-
-
 
     def isFile(self):
         return os.path.isfile(self.name)
@@ -55,9 +55,20 @@ class File:
     def isHardLink(self):
         return not self.isSymlink() and os.stat(self.name).st_ino > 1
     
+    def mtime(self):
+        return os.stat(self.name).st_mtime
+    
+    def atime(self):
+        return os.stat(self.name).at_mtime
 
+    def set_utime(self, atime, mtime):
+        os.utime(self.name , (atime, mtime), follow_symlinks=True)
+    
+    def set_mode(self, mode):
+        os.chmod(self.name, mode)
 
-
+    
+    
 
 file1 = File("file1")
 file_sym = File("hard1")
