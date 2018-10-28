@@ -26,15 +26,29 @@ os.utime, os.chmod
 def Entry(s):
     s = str(s)
     return s[11:-2]
+
 """ create argument """
-parser = argparse.ArgumentParser()
+file_parser = argparse.ArgumentParser(add_help=False)
+file_parser.add_argument('files', type=str, nargs = '*')
+parser = argparse.ArgumentParser(add_help=False, parents=[file_parser], prefix_chars=' ')
 parser.add_argument('-u', action='store_true')
 parser.add_argument('-c', action='store_true')
-parser.add_argument('files', type=str, nargs = 2)
 args = parser.parse_args()  # Namespace Object
 args = vars(args) # Convert Namespace to Dict
 
+""" Get file argument from argparse """
+files_ARG = []
+for e in args['files']:
+    if e != '-u' and e != '-c':
+        files_ARG.append(e)
+""" Get options (-u, -c) """
+bU_option = args['-u']
+bC_option = args['-c']
 
+
+
+
+#############################
 class File:
     def __init__ (self, name):
         self.name = name
@@ -59,7 +73,6 @@ class File:
     def atime(self):
         return os.stat(self.name).at_mtime
     
-
     """ symlink and hardlink """
     def createSymlink(self, source):
         os.symlink(source, self.name)
@@ -85,6 +98,7 @@ class File:
         else:
             return None
 
+#############################
 class Directory:
     def __init__ (self, name):
         self.name = name
@@ -134,8 +148,7 @@ class Directory:
                     tree.append(entry)
         return tree
 
-print(args)
-            
+
 
 
     
