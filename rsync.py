@@ -204,12 +204,10 @@ class Entry:
     def createSymlink(self, source):
         os.symlink(source, self.name)
 
-    def createHardlink(self, source, dest):
-        if self.isFile():
-            os.link(source, dest)
-        else:
-            pass
-    
+    def createHardlink(self, source):
+        if os.path.isfile(source):
+            os.link(source, self.name)
+
     """ SET TIME and PERMISSION """
     def set_utime(self, atime, mtime):
         os.utime(self.name , (atime, mtime))
@@ -258,9 +256,8 @@ class Entry:
 
 
 def Sync(src, dst):
+
     """ the magic function """
-
-
     # Preserve the links "
     if src.isHardLink() or src.isSymlink():
         if src.isHardLink():
@@ -268,33 +265,39 @@ def Sync(src, dst):
         if src.isSymlink():
             dst.createSymlink(src.get_realpath(), dst.name)
     else:
-        # copy contents
         if src.isFile(): # If Entry is File
-            f = open(dst.name, 'w+')
-            """ 
-            some modifications... 
-            rolling checksum algorithm... 
-            """
-            f.close()
+            #Check if files is not exist, we create a new one:
+            if not dst.isFile():
+                f = open(dst.name, 'w+')
+                f.write(src.get_data())
+                f.close()
+            #if dest file exists, use checksum
+            else:
+                pass
             
             """ Set Attribute """
             dst.set_mode(src.mode())
             dst.set_utime(src.atime(), src.mtime())
             
         else:   # If entry is Directory
-            ls_entry = src.scan_dir()
-            os.mkdir(dst.name)
+            
+
+            if not os.path.isdir(dst.name):
+                os.mkdir(dst.name)
 
             
             """ Set Attribute """
             dst.set_mode(src.mode())
             dst.set_utime(src.atime(), src.mtime())
 
-            for entry in ls_entry: 
+            for entry in src.scan_dir(): 
                 src_entry = Entry(src.name + '/' + entry)
                 dst_entry = Entry(dst.name + '/' + entry)
                 Sync(src_entry, dst_entry)
 
+def checksum(src, dst):
+    """ checksum algorithm to modified dst file """
+    
     
 
 if __name__ == '__main__':
@@ -306,7 +309,8 @@ if __name__ == '__main__':
         else:
 
             dest_dir =  EntryArg[len(EntryArg)-1]
-            os.mkdir(dest_dir) # Create destination dir by last argument
+            if not os.path.isdir(dest_dir):
+                os.mkdir(dest_dir) # Create destination dir by last argument
             EntryArg.pop() # pop destination directory
             
             for entry in EntryArg:
@@ -320,13 +324,15 @@ if __name__ == '__main__':
                 else:
                     continue
 
-    if len(EntryArg) == 2:
+    elif len(EntryArg) == 2:
         src_entry = Entry(EntryArg[0])
         dst_entry = Entry(EntryArg[1])
 
         #check if source file is directory
         if src_entry.isDir():
             dst_entry = Entry(EntryArg[1] + '/' + EntryArg[0])
+            if not os.path.isdir(EntryArg[1]):
+                os.mkdir(EntryArg[1])
 
          # Skip over non-existing file
         if src_entry.isExist():
