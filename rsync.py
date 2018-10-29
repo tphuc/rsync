@@ -181,7 +181,10 @@ class Entry:
     
     def isDir(self):
         return os.path.isdir(self.name)
-    
+
+    def isExist(self):
+        return self.isFile() or self.isDir()
+
     def isSymlink(self):
         return os.path.islink(self.name)
     
@@ -310,11 +313,27 @@ if __name__ == '__main__':
 
                 src_entry = Entry(entry) 
                 dst_entry = Entry(dest_dir + '/' + entry)
-                Sync(src_entry, dst_entry)
-                """ skip over non-existing entry """
-                #if not entry_src.isFile() and not entry_src.isDir():
-                    #continue
 
-                
+                # Skip over non-existing file
+                if src_entry.isExist():
+                    Sync(src_entry, dst_entry)
+                else:
+                    continue
+
+    if len(EntryArg) == 2:
+        src_entry = Entry(EntryArg[0])
+        dst_entry = Entry(EntryArg[1])
+
+        #check if source file is directory
+        if src_entry.isDir():
+            dst_entry = Entry(EntryArg[1] + '/' + EntryArg[0])
+
+         # Skip over non-existing file
+        if src_entry.isExist():
+            Sync(src_entry, dst_entry)
+        else:
+            raise "File doesn't exists"
+
+    
                 
                 
