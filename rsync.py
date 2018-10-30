@@ -273,6 +273,11 @@ def Sync(src, dst):
                 f.close()
             #if dest file exists, use checksum
             else:
+                """ 
+                    ##########
+                    ##########
+                    ##########
+                """
                 pass
             
             """ Set Attribute """
