@@ -8,6 +8,7 @@ from os import link
 from os import symlink
 from os import chmod
 from os import mkdir
+from os import sendfile
 """ 
 os.utime : modification time  (st_atime, st_mtime)
 os.path.realpath:
@@ -252,6 +253,14 @@ class Entry:
             entry = Str(entry)
             tree.append(entry)
         return tree
+    
+    def size(self):
+        return os.stat(self.name).st_size
+    def md5(self):
+        import hashlib
+        return hashlib.md5(self.get_data().encode('utf-8')).hexdigest()
+
+
 
 
 
@@ -273,12 +282,15 @@ def Sync(src, dst):
                 f.close()
             #if dest file exists, use checksum
             else:
-                """ 
-                    ##########
-                    ##########
-                    ##########
-                """
-                pass
+                if not src.md5() == dst.md5():
+                    checksum(src, dst)
+                elif src.size() < dst.size():
+                    # if size of dest is greater, rewrite dest
+                    f = open(dst.name, 'w+')
+                    f.write(src.get_data())
+                    f.close()
+                else:
+                    checksum(src, dst)
             
             """ Set Attribute """
             dst.set_mode(src.mode())
@@ -301,8 +313,15 @@ def Sync(src, dst):
                 Sync(src_entry, dst_entry)
 
 def checksum(src, dst):
+
+    src_o = os.open(src.name, os.O_RDWR)
+    dst_o = os.open(src.name, os.O_RDWR)
     """ checksum algorithm to modified dst file """
-    
+    for i in range(src.size()):
+        src_r = os.read(src, 1)
+        dst_r = os.read(dst, 1)
+        if src_r.decode('utf-8') != dst_r.decode('utf-8'):
+            os.sendfile(dst_o, src_o, i, 1)
     
 
 if __name__ == '__main__':
