@@ -35,6 +35,86 @@ def has_exist(ls):
             return False
     return True
 
+def process_entry_args(entry_ls):
+    ls = []
+    for entry in entry_ls:
+        if entry[len(entry)-1] == '/':
+            fd = Entry(entry[:-1])
+            for subpath in fd.scan_dir():
+                ls.append(subpath)
+        else:
+            ls.append(entry)
+    return ls
+
+def sync(src, dst):
+
+    """ the magic function """
+    # Preserve the links "
+    if src.isHardLink() or src.isSymlink():
+        if src.isHardLink():
+            dst.createHardlink(src.get_realpath(), dst.name)
+        if src.isSymlink():
+            dst.createSymlink(src.get_realpath(), dst.name)
+    else:
+        if src.isFile(): # If Entry is File
+            #Check if files is not exist, we create a new one:
+            if not dst.isFile():
+                f = open(dst.name, 'w+')
+                f.write(src.get_data())
+                f.close()
+            #if dest file exists, use checksum
+            else:
+                if not src.md5() == dst.md5():
+                    checksum(src, dst)
+                elif src.size() < dst.size():
+                    # if size of dest is greater, rewrite dest
+                    f = open(dst.name, 'w+')
+                    f.write(src.get_data())
+                    f.close()
+                else:
+                    checksum(src, dst)
+            
+            """ Set Attribute """
+            dst.set_mode(src.mode())
+            dst.set_utime(src.atime(), src.mtime())
+            
+        else:   # If entry is Directory
+            
+
+            if not os.path.isdir(dst.name):
+                os.mkdir(dst.name)
+
+            
+            """ Set Attribute """
+            dst.set_mode(src.mode())
+            dst.set_utime(src.atime(), src.mtime())
+
+            for entry in src.scan_dir(): 
+                src_entry = Entry(src.name + '/' + entry)
+                dst_entry = Entry(dst.name + '/' + entry)
+                sync(src_entry, dst_entry)
+
+def checksum(src, dst):
+
+    src_o = os.open(src.name, os.O_RDWR)
+    dst_o = os.open(dst.name, os.O_RDWR)
+
+    """ checksum algorithm to modified dst file """
+    for i in range(src.size()):
+        src_r = os.read(src_o, 1) # read 1 byte from src
+        dst_r = os.read(dst_o, 1) # read 1 byte from dst
+
+
+        # If 2 bytes are different, rewrite that byte on dest:
+        if src_r.decode('utf-8') != dst_r.decode('utf-8'):
+            if dst_r.decode('utf-8') != '':
+                os.lseek(dst_o, -1 ,1)
+            os.write(dst_o, src_r)
+            """ 
+            optional method :
+                os.sendfile(dst_o, src_o, i, 1)
+            """
+
 """ create argument """
 file_parser = argparse.ArgumentParser(add_help=False)
 file_parser.add_argument('files', type=str, nargs = '*')
@@ -46,118 +126,22 @@ args = vars(args) # Convert Namespace to Dict
 
 """ Get file argument from argparse """
 EntryArg = []
-for e in args['files']:
-    if e != '-u' and e != '-c':
-        EntryArg.append(e)
+
 """ Get options (-u, -c) """
 bU_option = args['-u']
 bC_option = args['-c']
-
-
-
-
-#############################
-class File:
-    def __init__ (self, name):
-        self.name = name
-
-    """ Attribute """
-    def get_realpath(self):
-        """return the source file if the current file is a symlink"""
-        return os.path.realpath(self.name)
-
-    def isFile(self):
-        return os.path.isfile(self.name)
-    
-    def isSymlink(self):
-        return os.path.islink(self.name)
-    
-    def isHardLink(self):
-        return not self.isSymlink() and os.stat(self.name).st_ino > 1
-    
-    def mtime(self):
-        return os.stat(self.name).st_mtime
-    
-    def atime(self):
-        return os.stat(self.name).at_mtime
-    
-    """ symlink and hardlink """
-    def createSymlink(self, source):
-        os.symlink(source, self.name)
-
-    def createHardlink(self, source, dest):
-        os.link(source, dest)
-    
-    """ SET TIME and PERMISSION """
-    def set_utime(self, atime, mtime):
-        os.utime(self.name , (atime, mtime), follow_symlinks=True)
-    
-    def set_mode(self, mode):
-        os.chmod(self.name, mode)
-
-    """ FILE CONTENT """
-    def get_content(self):
-        # check if file exists
-        if self.isFile():
-            f = open(self.name, 'r')
-            data = f.read()
-            f.close()
-            return data
+for e in args['files']:
+    if e != '-u' and e != '-c':
+        EntryArg.append(e)
+    else:
+        if e == '-u':
+            bU_option = True
         else:
-            return None
+            bC_option = True
+EntryArg = process_entry_args(EntryArg)
 
-#############################
-class Directory:
-    def __init__ (self, name):
-        self.name = name
 
-    """ Attribute """
-    def get_realpath(self):
-        """return the source file if the current dir is a symlink"""
-        return os.path.realpath(self.name)
 
-    def isDir(self):
-        return os.path.isdir(self.name)
-    
-    def isSymlink(self):
-        return os.path.islink(self.name)
-    
-    def mtime(self):
-        return os.stat(self.name).st_mtime
-    
-    def atime(self):
-        return os.stat(self.name).at_mtime
-    
-
-    """ symlink """
-    def createSymlink(self, source):
-        os.symlink(source, self.name)
-
-    """ SET TIME and PERMISSION """
-    def set_utime(self, atime, mtime):
-        os.utime(self.name , (atime, mtime), follow_symlinks=True)
-    
-    def set_mode(self, mode):
-        os.chmod(self.name, mode)
-
-    """ DIRECTORY CONTENT """
-    def get_tree(self, current_dir = None):
-        """ create a list of all entry """
-        tree = []
-        if current_dir == None: # 1st call
-            current_dir = self.name
-        
-        for entry in os.scandir(current_dir):
-            entry = Entry(entry)
-            tree.append(current_dir + '/' + entry)
-            "Check if entry is a Sub Directory"
-            if os.path.isdir(current_dir + '/' + entry) is True:
-                for entry in self.get_tree(current_dir + '/' + entry):
-                    tree.append(entry)
-        return tree
-
-    def add_subDir(self, directory):
-        os.mkdir(directory)
 
 """
 notes:
@@ -264,65 +248,6 @@ class Entry:
 
 
 
-def Sync(src, dst):
-
-    """ the magic function """
-    # Preserve the links "
-    if src.isHardLink() or src.isSymlink():
-        if src.isHardLink():
-            dst.createHardlink(src.get_realpath(), dst.name)
-        if src.isSymlink():
-            dst.createSymlink(src.get_realpath(), dst.name)
-    else:
-        if src.isFile(): # If Entry is File
-            #Check if files is not exist, we create a new one:
-            if not dst.isFile():
-                f = open(dst.name, 'w+')
-                f.write(src.get_data())
-                f.close()
-            #if dest file exists, use checksum
-            else:
-                if not src.md5() == dst.md5():
-                    checksum(src, dst)
-                elif src.size() < dst.size():
-                    # if size of dest is greater, rewrite dest
-                    f = open(dst.name, 'w+')
-                    f.write(src.get_data())
-                    f.close()
-                else:
-                    checksum(src, dst)
-            
-            """ Set Attribute """
-            dst.set_mode(src.mode())
-            dst.set_utime(src.atime(), src.mtime())
-            
-        else:   # If entry is Directory
-            
-
-            if not os.path.isdir(dst.name):
-                os.mkdir(dst.name)
-
-            
-            """ Set Attribute """
-            dst.set_mode(src.mode())
-            dst.set_utime(src.atime(), src.mtime())
-
-            for entry in src.scan_dir(): 
-                src_entry = Entry(src.name + '/' + entry)
-                dst_entry = Entry(dst.name + '/' + entry)
-                Sync(src_entry, dst_entry)
-
-def checksum(src, dst):
-
-    src_o = os.open(src.name, os.O_RDWR)
-    dst_o = os.open(src.name, os.O_RDWR)
-    """ checksum algorithm to modified dst file """
-    for i in range(src.size()):
-        src_r = os.read(src, 1)
-        dst_r = os.read(dst, 1)
-        if src_r.decode('utf-8') != dst_r.decode('utf-8'):
-            os.sendfile(dst_o, src_o, i, 1)
-    
 
 if __name__ == '__main__':
 
@@ -344,7 +269,7 @@ if __name__ == '__main__':
 
                 # Skip over non-existing file
                 if src_entry.isExist():
-                    Sync(src_entry, dst_entry)
+                    sync(src_entry, dst_entry)
                 else:
                     continue
 
@@ -360,7 +285,7 @@ if __name__ == '__main__':
 
          # Skip over non-existing file
         if src_entry.isExist():
-            Sync(src_entry, dst_entry)
+            sync(src_entry, dst_entry)
         else:
             raise "File doesn't exists"
 
