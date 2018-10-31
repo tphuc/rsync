@@ -9,7 +9,7 @@ from os import symlink
 from os import chmod
 from os import mkdir
 from os import sendfile
-""" 
+"""
 os.utime : modification time  (st_atime, st_mtime)
 os.path.realpath:
 os.chmod : set file permission
@@ -50,8 +50,14 @@ def process_content_arg(entry_ls):
 
     return (ls, special)
 
-def sync(src, dst):
-
+def sync(src, dst, U_option=False, C_option=False):
+    if dst.isExist():
+        if U_option:
+            if src.mtime() < dst.mtime():
+                return 0 #do nothing
+        if not C_option:
+            if src.mtime() == dst.mtime() and src.atime() == dst.atime():
+                return 0 #do nothing
     """ the magic function """
     # Preserve the links "
     if src.isHardLink() or src.isSymlink():
@@ -80,26 +86,24 @@ def sync(src, dst):
                     f.close()
                 else:
                     checksum(src, dst)
-            
+
             """ Set Attribute """
             dst.set_mode(src.mode())
             dst.set_utime(src.atime(), src.mtime())
-            
-        else:   # If entry is Directory
-            
 
+        else:   # If entry is Directory
             if not os.path.isdir(dst.name):
                 os.mkdir(dst.name)
 
-            
+
             """ Set Attribute """
             dst.set_mode(src.mode())
             dst.set_utime(src.atime(), src.mtime())
 
-            for entry in src.scan_dir(): 
+            for entry in src.scan_dir():
                 src_entry = Entry(src.name + '/' + entry)
                 dst_entry = Entry(dst.name + '/' + entry)
-                sync(src_entry, dst_entry)
+                sync(src_entry, dst_entry, U_option, C_option)
 
 def checksum(src, dst):
 
@@ -117,7 +121,7 @@ def checksum(src, dst):
             if dst_r.decode('utf-8') != '':
                 os.lseek(dst_o, -1 ,1)
             os.write(dst_o, src_r)
-            """ 
+            """
             optional method :
                 os.sendfile(dst_o, src_o, i, 1)
             """
@@ -129,7 +133,7 @@ notes:
     - If rsync not found destination file/dir, new file/dir will be created
 """
 
-    
+
 class Entry:
 
     def __init__ (self, name):
@@ -142,7 +146,7 @@ class Entry:
 
     def isFile(self):
         return os.path.isfile(self.name)
-    
+
     def isDir(self):
         return os.path.isdir(self.name)
 
@@ -151,26 +155,26 @@ class Entry:
 
     def isSymlink(self):
         return os.path.islink(self.name)
-    
+
     def isHardLink(self):
         return os.stat(self.name).st_nlink > 1 and self.isFile()
-    
+
     def mtime(self):
         return os.stat(self.name).st_mtime
-    
+
     def atime(self):
         return os.stat(self.name).st_atime
 
     def mode(self):
         return os.stat(self.name).st_mode
-    
+
     def inode(self):
         return os.stat(self.name).st_ino
 
     """ symlink and hardlink """
     def createSymlink(self, source):
         if self.isExist():
-            if self.inode != os.stat(source).st_ino:
+            if self.inode() != os.stat(source).st_ino:
                 os.unlink(self.name)
                 os.symlink(source, self.name)
         else:
@@ -187,7 +191,7 @@ class Entry:
     """ SET TIME and PERMISSION """
     def set_utime(self, atime, mtime):
         os.utime(self.name , (atime, mtime))
-    
+
     def set_mode(self, mode):
         os.chmod(self.name, mode)
 
@@ -202,7 +206,7 @@ class Entry:
             return data
         else:
             return None
-    
+
     """ DIRECTORY CONTENT """
     def get_tree(self, current_dir = None):
         """ only for directory """
@@ -211,7 +215,7 @@ class Entry:
             tree = []
             if current_dir == None: # 1st call
                 current_dir = self.name
-            
+
             for entry in os.scandir(current_dir):
                 entry = Str(entry)
                 tree.append(current_dir + '/' + entry)
@@ -228,7 +232,7 @@ class Entry:
             entry = Str(entry)
             tree.append(entry)
         return tree
-    
+
     def size(self):
         return os.stat(self.name).st_size
     def md5(self):
@@ -236,77 +240,90 @@ class Entry:
         return hashlib.md5(self.get_data().encode('utf-8')).hexdigest()
 
 
+###############################
+def process_various_arguments(EntryArg, Entry_content_fd, U_option, C_option, R_option):
+    if not has_exist(EntryArg[:-1]):
+        print('Some files could not be transfered')
+        return 0
+    
+    dst_fd = Entry(EntryArg[len(EntryArg)-1])
+    if not dst_fd.isExist():
+        os.mkdir(dst_fd.name)
+    EntryArg.pop()
 
-""" create argument """
-file_parser = argparse.ArgumentParser(add_help=False)
-file_parser.add_argument('files', type=str, nargs = '*')
-parser = argparse.ArgumentParser(add_help=False, parents=[file_parser], prefix_chars=' ')
-parser.add_argument('-u', action='store_true')
-parser.add_argument('-c', action='store_true')
-args = parser.parse_args()  # Namespace Object
-args = vars(args) # Convert Namespace to Dict
+    for entry in EntryArg:
+        src_entry = Entry(entry)
+        dst_entry = Entry(dst_fd.name + '/' + entry)
 
-""" Get file argument from argparse """
-args_ls = []
+        if entry in Entry_content_fd:
+            dst_entry = Entry(dst_fd.name + '/' + entry[entry.find('/') + 1:])
+        sync(src_entry, dst_entry, U_option, C_option)
 
-""" Get options (-u, -c) """
-bU_option = args['-u']
-bC_option = args['-c']
-for e in args['files']:
-    if e != '-u' and e != '-c':
-        args_ls.append(e)
+
+def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_option):
+    src = Entry(EntryArg[0])
+    dst = Entry(EntryArg[1])
+
+    if src.isDir():
+        if not R_option:
+            print("skipping directory "+src.name)
+            return 0
+        if not dst.isExist():
+            os.mkdir(dst.name)
+        dst = Entry(EntryArg[1] + '/' + EntryArg[0])
+        sync(src, dst, U_option, C_option)      
+    elif src.isFile():
+        if dst.isDir():
+            dst = Entry(EntryArg[1] + '/' + EntryArg[0])
+        sync(src, dst, U_option, C_option)
+
+    elif len(Entry_content_fd):
+        dst = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
+        sync(src, dst, U_option, C_option)
     else:
-        if e == '-u':
-            bU_option = True
-        else:
-            bC_option = True
-(EntryArg, Entry_content_fd) = process_content_arg(args_ls)
+        print('rsync: link_stat "' + EntryArg[0] + '" failed: No such file or directory (2)')
+        return 0
 
 
-
+#######################################
 if __name__ == '__main__':
+    """ create argument """
+    file_parser = argparse.ArgumentParser(add_help=False)
+    file_parser.add_argument('files', type=str, nargs = '*')
+    parser = argparse.ArgumentParser(add_help=False, parents=[file_parser], prefix_chars=' ')
+    parser.add_argument('-u', action='store_false')
+    parser.add_argument('-c', action='store_false')
+    parser.add_argument('-r', action='store_false')
+    args = parser.parse_args()  # Namespace Object
+    args = vars(args) # Convert Namespace to Dict
 
-    # If num arguments > 2, then the last argument is the Directory.
-    if len(EntryArg) > 2:
-        if not has_exist(EntryArg[:-1]):
-            raise "Some files could not be transfered "
+    """ Get file argument from argparse """
+    args_ls = []
+
+    """ Get options (-u, -c) """
+    bU_option = args['-u']
+    bC_option = args['-c']
+    bR_option = args['-r']
+    for e in args['files']:
+        if e != '-u' and e != '-c' and e != '-r':
+            args_ls.append(e)
         else:
+            if e == '-u':
+                bU_option = True
+            elif e == '-c':
+                bC_option = True
+            elif e == '-r':
+                bR_option = True
+    (EntryArg, Entry_content_fd) = process_content_arg(args_ls)
 
-            dest_dir =  EntryArg[len(EntryArg)-1]
-            if not os.path.isdir(dest_dir):
-                os.mkdir(dest_dir) # Create destination dir by last argument
-            EntryArg.pop() # pop destination directory
-            
-            for entry in EntryArg:
 
-                src_entry = Entry(entry)
-                dst_entry = Entry(dest_dir + '/' + entry)
 
-                if entry in Entry_content_fd:
-                    entry = entry[entry.find('/') + 1:]
-                    dst_entry = Entry(dest_dir + '/' + entry)
-
-                # Skip over non-existing file
-                if src_entry.isExist():
-                    sync(src_entry, dst_entry)
-                else:
-                    continue
+    """ process rsync """
+    if len(EntryArg) > 2:
+        process_various_arguments(EntryArg, Entry_content_fd, bU_option, bC_option, bR_option)
 
     elif len(EntryArg) == 2:
-        src_entry = Entry(EntryArg[0])
-        dst_entry = Entry(EntryArg[1])
+        process_two_argument(EntryArg, Entry_content_fd, bU_option, bC_option, bR_option)
 
-        #check if source file is directory
-        if src_entry.isDir() or len(Entry_content_fd):
-            dst_entry = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
-            if not os.path.isdir(EntryArg[1]):
-                os.mkdir(EntryArg[1])
-
-         # Skip over non-existing file
-        if src_entry.isExist():
-            sync(src_entry, dst_entry)
-        else:
-            raise "File doesn't exists"
-
-    
-                
+    else:
+        print('value != ""')
