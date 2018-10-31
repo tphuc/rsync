@@ -36,16 +36,19 @@ def has_exist(ls):
             return False
     return True
 
-def process_entry_args(entry_ls):
+def process_content_arg(entry_ls):
     ls = []
+    special = []
     for entry in entry_ls:
         if entry[len(entry)-1] == '/':
             fd = Entry(entry[:-1])
             for subpath in fd.scan_dir():
-                ls.append(subpath)
+                ls.append(entry+subpath)
+                special.append(entry+subpath)
         else:
             ls.append(entry)
-    return ls
+
+    return (ls, special)
 
 def sync(src, dst):
 
@@ -53,9 +56,12 @@ def sync(src, dst):
     # Preserve the links "
     if src.isHardLink() or src.isSymlink():
         if src.isHardLink():
-            dst.createHardlink(src.get_realpath(), dst.name)
+            dst.createHardlink(src.get_realpath())
         if src.isSymlink():
-            dst.createSymlink(src.get_realpath(), dst.name)
+            dst.createSymlink(src.get_realpath())
+        """ Set Attribute """
+        dst.set_mode(src.mode())
+        dst.set_utime(src.atime(), src.mtime())
     else:
         if src.isFile(): # If Entry is File
             #Check if files is not exist, we create a new one:
@@ -116,34 +122,6 @@ def checksum(src, dst):
                 os.sendfile(dst_o, src_o, i, 1)
             """
 
-""" create argument """
-file_parser = argparse.ArgumentParser(add_help=False)
-file_parser.add_argument('files', type=str, nargs = '*')
-parser = argparse.ArgumentParser(add_help=False, parents=[file_parser], prefix_chars=' ')
-parser.add_argument('-u', action='store_true')
-parser.add_argument('-c', action='store_true')
-args = parser.parse_args()  # Namespace Object
-args = vars(args) # Convert Namespace to Dict
-
-""" Get file argument from argparse """
-EntryArg = []
-
-""" Get options (-u, -c) """
-bU_option = args['-u']
-bC_option = args['-c']
-for e in args['files']:
-    if e != '-u' and e != '-c':
-        EntryArg.append(e)
-    else:
-        if e == '-u':
-            bU_option = True
-        else:
-            bC_option = True
-EntryArg = process_entry_args(EntryArg)
-
-
-
-
 """
 notes:
     - Hardlink doesn't work with DIRECTORY
@@ -186,14 +164,25 @@ class Entry:
     def mode(self):
         return os.stat(self.name).st_mode
     
+    def inode(self):
+        return os.stat(self.name).st_ino
+
     """ symlink and hardlink """
     def createSymlink(self, source):
-        os.symlink(source, self.name)
+        if self.isExist():
+            if self.inode != os.stat(source).st_ino:
+                os.unlink(self.name)
+                os.symlink(source, self.name)
+        else:
+            os.symlink(source, self.name)
 
     def createHardlink(self, source):
         if self.isExist():
-            os.unlink(self.name)
-        os.link(source, self.name)
+            if self.inode() != os.stat(source).st_ino:
+                os.unlink(self.name)
+                os.link(source, self.name)
+        else:
+            os.link(source, self.name)
 
     """ SET TIME and PERMISSION """
     def set_utime(self, atime, mtime):
@@ -248,12 +237,36 @@ class Entry:
 
 
 
+""" create argument """
+file_parser = argparse.ArgumentParser(add_help=False)
+file_parser.add_argument('files', type=str, nargs = '*')
+parser = argparse.ArgumentParser(add_help=False, parents=[file_parser], prefix_chars=' ')
+parser.add_argument('-u', action='store_true')
+parser.add_argument('-c', action='store_true')
+args = parser.parse_args()  # Namespace Object
+args = vars(args) # Convert Namespace to Dict
+
+""" Get file argument from argparse """
+args_ls = []
+
+""" Get options (-u, -c) """
+bU_option = args['-u']
+bC_option = args['-c']
+for e in args['files']:
+    if e != '-u' and e != '-c':
+        args_ls.append(e)
+    else:
+        if e == '-u':
+            bU_option = True
+        else:
+            bC_option = True
+(EntryArg, Entry_content_fd) = process_content_arg(args_ls)
 
 
 
 if __name__ == '__main__':
 
-    """ If num arguments > 2, then the last argument is the Directory. """
+    # If num arguments > 2, then the last argument is the Directory.
     if len(EntryArg) > 2:
         if not has_exist(EntryArg[:-1]):
             raise "Some files could not be transfered "
@@ -266,8 +279,12 @@ if __name__ == '__main__':
             
             for entry in EntryArg:
 
-                src_entry = Entry(entry) 
+                src_entry = Entry(entry)
                 dst_entry = Entry(dest_dir + '/' + entry)
+
+                if entry in Entry_content_fd:
+                    entry = entry[entry.find('/') + 1:]
+                    dst_entry = Entry(dest_dir + '/' + entry)
 
                 # Skip over non-existing file
                 if src_entry.isExist():
@@ -280,8 +297,8 @@ if __name__ == '__main__':
         dst_entry = Entry(EntryArg[1])
 
         #check if source file is directory
-        if src_entry.isDir():
-            dst_entry = Entry(EntryArg[1] + '/' + EntryArg[0])
+        if src_entry.isDir() or len(Entry_content_fd):
+            dst_entry = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
             if not os.path.isdir(EntryArg[1]):
                 os.mkdir(EntryArg[1])
 
@@ -292,5 +309,4 @@ if __name__ == '__main__':
             raise "File doesn't exists"
 
     
-                
                 
