@@ -30,6 +30,7 @@ def Str(s):
     return s[11:-2]
 
 def has_exist(ls):
+    #check if list of entry is exist
     for entry in ls:
         if not os.path.isfile(entry) and not os.path.isdir(entry):
             return False
@@ -174,7 +175,7 @@ class Entry:
         return os.path.islink(self.name)
     
     def isHardLink(self):
-        return not self.isSymlink() and os.stat(self.name).st_nlink > 1 and self.isFile()
+        return os.stat(self.name).st_nlink > 1 and self.isFile()
     
     def mtime(self):
         return os.stat(self.name).st_mtime
@@ -190,8 +191,9 @@ class Entry:
         os.symlink(source, self.name)
 
     def createHardlink(self, source):
-        if os.path.isfile(source):
-            os.link(source, self.name)
+        if self.isExist():
+            os.unlink(self.name)
+        os.link(source, self.name)
 
     """ SET TIME and PERMISSION """
     def set_utime(self, atime, mtime):
