@@ -54,6 +54,8 @@ def sync(src, dst, U_option=False, C_option=False):
     if dst.isExist():
         if U_option:
             if src.mtime() < dst.mtime():
+                dst.set_mode(src.mode())
+                dst.set_utime(src.atime(), src.mtime())
                 return 0 #do nothing
         if not C_option:
             if src.mtime() == dst.mtime() and src.atime() == dst.atime():
@@ -77,8 +79,8 @@ def sync(src, dst, U_option=False, C_option=False):
                 f.close()
             #if dest file exists, use checksum
             else:
-                if not src.md5() == dst.md5():
-                    checksum(src, dst)
+                if src.md5() == dst.md5():
+                    return 0
                 elif src.size() < dst.size():
                     # if size of dest is greater, rewrite dest
                     f = open(dst.name, 'w+')
