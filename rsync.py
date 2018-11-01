@@ -51,6 +51,7 @@ def process_content_arg(entry_ls):
     return (ls, special)
 
 def sync(src, dst, U_option=False, C_option=False):
+    print(src.name, dst.name)
     if dst.isExist():
         if U_option:
             if src.mtime() < dst.mtime():
@@ -276,7 +277,7 @@ def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_optio
         sync(src, dst, U_option, C_option)      
     elif src.isFile():
         if dst.isDir():
-            dst = Entry(EntryArg[1] + '/' + EntryArg[0])
+            dst = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
         sync(src, dst, U_option, C_option)
 
     elif len(Entry_content_fd):
