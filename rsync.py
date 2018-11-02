@@ -9,6 +9,7 @@ from os import symlink
 from os import chmod
 from os import mkdir
 from os import sendfile
+from os import access
 """
 os.utime : modification time  (st_atime, st_mtime)
 os.path.realpath:
@@ -51,7 +52,9 @@ def process_content_arg(entry_ls):
     return (ls, special)
 
 def sync(src, dst, U_option=False, C_option=False):
-    print(src.name, dst.name)
+    if not os.access(src.name, os.R_OK):
+        print('rsync: send_files failed to open "'+src.get_realpath()+'": Permission denied (13)')
+        return 0
     if dst.isExist():
         if U_option:
             if src.mtime() < dst.mtime():
@@ -114,7 +117,7 @@ def checksum(src, dst):
     dst_o = os.open(dst.name, os.O_RDWR)
 
     """ checksum algorithm to modified dst file """
-    for i in range(src.size()):
+    for i in range(src.size()+1):
         src_r = os.read(src_o, 1) # read 1 byte from src
         dst_r = os.read(dst_o, 1) # read 1 byte from dst
 
@@ -248,7 +251,7 @@ def process_various_arguments(EntryArg, Entry_content_fd, U_option, C_option, R_
     if not has_exist(EntryArg[:-1]):
         print('Some files could not be transfered')
         return 0
-    
+
     dst_fd = Entry(EntryArg[len(EntryArg)-1])
     if not dst_fd.isExist():
         os.mkdir(dst_fd.name)
@@ -274,7 +277,7 @@ def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_optio
         if not dst.isExist():
             os.mkdir(dst.name)
         dst = Entry(EntryArg[1] + '/' + EntryArg[0])
-        sync(src, dst, U_option, C_option)      
+        sync(src, dst, U_option, C_option)
     elif src.isFile():
         if dst.isDir():
             dst = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
@@ -284,7 +287,7 @@ def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_optio
         dst = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
         sync(src, dst, U_option, C_option)
     else:
-        print('rsync: link_stat "' + EntryArg[0] + '" failed: No such file or directory (2)')
+        print('rsync: link_stat "' + src.get_realpath() + '" failed: No such file or directory (2)')
         return 0
 
 
