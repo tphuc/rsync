@@ -25,17 +25,21 @@ os.scandir
 os.unlink
 os.utime, os.chmod
 """
+
+
 def Str(s):
     """ c onvert DirEntry to str """
     s = str(s)
     return s[11:-2]
 
+
 def has_exist(ls):
-    #check if list of entry is exist
+    # check if list of entry is exist
     for entry in ls:
         if not os.path.isfile(entry) and not os.path.isdir(entry):
             return False
     return True
+
 
 def process_content_arg(entry_ls):
     ls = []
@@ -48,22 +52,23 @@ def process_content_arg(entry_ls):
                 special.append(entry+subpath)
         else:
             ls.append(entry)
-
     return (ls, special)
+
 
 def sync(src, dst, U_option=False, C_option=False):
     if not os.access(src.name, os.R_OK):
-        print('rsync: send_files failed to open "'+src.get_realpath()+'": Permission denied (13)')
+        print('rsync: send_files failed '
+              'to open "'+src.get_realpath()+'": Permission denied (13)')
         return 0
     if dst.isExist():
         if U_option:
             if src.mtime() < dst.mtime():
                 dst.set_mode(src.mode())
                 dst.set_utime(src.atime(), src.mtime())
-                return 0 #do nothing
+                return 0  # do nothing
         if not C_option:
             if src.mtime() == dst.mtime() and src.atime() == dst.atime():
-                return 0 #do nothing
+                return 0  # do nothing
     """ the magic function """
     # Preserve the links "
     if src.isHardLink() or src.isSymlink():
@@ -75,13 +80,13 @@ def sync(src, dst, U_option=False, C_option=False):
         dst.set_mode(src.mode())
         dst.set_utime(src.atime(), src.mtime())
     else:
-        if src.isFile(): # If Entry is File
-            #Check if files is not exist, we create a new one:
+        if src.isFile():  # If Entry is File
+            # Check if files is not exist, we create a new one:
             if not dst.isFile():
                 f = open(dst.name, 'w+')
                 f.write(src.get_data())
                 f.close()
-            #if dest file exists, use checksum
+            # if dest file exists, use checksum
             else:
                 if src.md5() == dst.md5():
                     return 0
@@ -101,7 +106,6 @@ def sync(src, dst, U_option=False, C_option=False):
             if not os.path.isdir(dst.name):
                 os.mkdir(dst.name)
 
-
             """ Set Attribute """
             dst.set_mode(src.mode())
             dst.set_utime(src.atime(), src.mtime())
@@ -111,6 +115,7 @@ def sync(src, dst, U_option=False, C_option=False):
                 dst_entry = Entry(dst.name + '/' + entry)
                 sync(src_entry, dst_entry, U_option, C_option)
 
+
 def checksum(src, dst):
 
     src_o = os.open(src.name, os.O_RDWR)
@@ -118,14 +123,13 @@ def checksum(src, dst):
 
     """ checksum algorithm to modified dst file """
     for i in range(src.size()+1):
-        src_r = os.read(src_o, 1) # read 1 byte from src
-        dst_r = os.read(dst_o, 1) # read 1 byte from dst
-
+        src_r = os.read(src_o, 1)  # read 1 byte from src
+        dst_r = os.read(dst_o, 1)  # read 1 byte from dst
 
         # If 2 bytes are different, rewrite that byte on dest:
         if src_r.decode('utf-8') != dst_r.decode('utf-8'):
             if dst_r.decode('utf-8') != '':
-                os.lseek(dst_o, -1 ,1)
+                os.lseek(dst_o, -1, 1)
             os.write(dst_o, src_r)
             """
             optional method :
@@ -142,7 +146,7 @@ notes:
 
 class Entry:
 
-    def __init__ (self, name):
+    def __init__(self, name):
         self.name = name
 
     """ Attribute """
@@ -196,7 +200,7 @@ class Entry:
 
     """ SET TIME and PERMISSION """
     def set_utime(self, atime, mtime):
-        os.utime(self.name , (atime, mtime))
+        os.utime(self.name, (atime, mtime))
 
     def set_mode(self, mode):
         os.chmod(self.name, mode)
@@ -214,12 +218,12 @@ class Entry:
             return None
 
     """ DIRECTORY CONTENT """
-    def get_tree(self, current_dir = None):
+    def get_tree(self, current_dir=None):
         """ only for directory """
         if not self.isFile():
             """ create a list of all entry """
             tree = []
-            if current_dir == None: # 1st call
+            if current_dir is None:  # 1st call
                 current_dir = self.name
 
             for entry in os.scandir(current_dir):
@@ -241,13 +245,14 @@ class Entry:
 
     def size(self):
         return os.stat(self.name).st_size
+
     def md5(self):
         import hashlib
         return hashlib.md5(self.get_data().encode('utf-8')).hexdigest()
 
 
 ###############################
-def process_various_arguments(EntryArg, Entry_content_fd, U_option, C_option, R_option):
+def process_various_arguments(EntryArg, Entry_content_fd, U, C, R):
     if not has_exist(EntryArg[:-1]):
         print('Some files could not be transfered')
         return 0
@@ -263,15 +268,15 @@ def process_various_arguments(EntryArg, Entry_content_fd, U_option, C_option, R_
 
         if entry in Entry_content_fd:
             dst_entry = Entry(dst_fd.name + '/' + entry[entry.find('/') + 1:])
-        sync(src_entry, dst_entry, U_option, C_option)
+        sync(src_entry, dst_entry, U, C)
 
 
-def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_option):
+def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R):
     src = Entry(EntryArg[0])
     dst = Entry(EntryArg[1])
 
     if src.isDir():
-        if not R_option:
+        if not R:
             print("skipping directory "+src.name)
             return 0
         if not dst.isExist():
@@ -280,14 +285,17 @@ def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_optio
         sync(src, dst, U_option, C_option)
     elif src.isFile():
         if dst.isDir():
-            dst = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
+            dst = Entry(EntryArg[1] + '/' +
+                        EntryArg[0][EntryArg[0].find('/') + 1:])
         sync(src, dst, U_option, C_option)
 
     elif len(Entry_content_fd):
-        dst = Entry(EntryArg[1] + '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
+        dst = Entry(EntryArg[1] +
+                    '/' + EntryArg[0][EntryArg[0].find('/') + 1:])
         sync(src, dst, U_option, C_option)
     else:
-        print('rsync: link_stat "' + src.get_realpath() + '" failed: No such file or directory (2)')
+        print('rsync: link_stat "' + src.get_realpath() + '" failed: '
+              'No such file or directory (2)')
         return 0
 
 
@@ -295,13 +303,13 @@ def process_two_argument(EntryArg, Entry_content_fd, U_option, C_option, R_optio
 if __name__ == '__main__':
     """ create argument """
     file_parser = argparse.ArgumentParser(add_help=False)
-    file_parser.add_argument('files', type=str, nargs = '*')
-    parser = argparse.ArgumentParser(add_help=False, parents=[file_parser], prefix_chars=' ')
+    file_parser.add_argument('files', type=str, nargs='*')
+    parser = argparse.ArgumentParser(parents=[file_parser], prefix_chars=' ')
     parser.add_argument('-u', action='store_false')
     parser.add_argument('-c', action='store_false')
     parser.add_argument('-r', action='store_false')
     args = parser.parse_args()  # Namespace Object
-    args = vars(args) # Convert Namespace to Dict
+    args = vars(args)  # Convert Namespace to Dict
 
     """ Get file argument from argparse """
     args_ls = []
@@ -322,14 +330,14 @@ if __name__ == '__main__':
                 bR_option = True
     (EntryArg, Entry_content_fd) = process_content_arg(args_ls)
 
-
-
     """ process rsync """
     if len(EntryArg) > 2:
-        process_various_arguments(EntryArg, Entry_content_fd, bU_option, bC_option, bR_option)
+        process_various_arguments(EntryArg, Entry_content_fd,
+                                  bU_option, bC_option, bR_option)
 
     elif len(EntryArg) == 2:
-        process_two_argument(EntryArg, Entry_content_fd, bU_option, bC_option, bR_option)
+        process_two_argument(EntryArg, Entry_content_fd,
+                             bU_option, bC_option, bR_option)
 
     else:
         print('value != ""')
